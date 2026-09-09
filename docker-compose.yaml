@@ -1,0 +1,118 @@
+name: gps-guardian-escolar
+
+services:
+  database:
+    image: postgres:15
+    container_name: gps_guardian_escolar_database
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gps_guardian_escolar}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - guardian_network
+
+  liquibase:
+    build:
+      context: ../DB-Structure-Guardian-Escolar
+      dockerfile: Dockerfile
+    image: gps_guardian_escolar_liquibase:latest
+    container_name: gps_guardian_escolar_liquibase
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      LIQUIBASE_COMMAND_USERNAME: ${POSTGRES_USER:-postgres}
+      LIQUIBASE_COMMAND_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ../DB-Structure-Guardian-Escolar/changelog:/liquibase/changelog:ro
+      - ../DB-Structure-Guardian-Escolar/01_ddl:/db/01_ddl:ro
+      - ../DB-Structure-Guardian-Escolar/02_dml:/db/02_dml:ro
+      - ../DB-Structure-Guardian-Escolar/03_dcl:/db/03_dcl:ro
+      - ../DB-Structure-Guardian-Escolar/liquibase.properties:/liquibase/liquibase.properties:ro
+    entrypoint: ["liquibase"]
+    command:
+      - --defaultsFile=/liquibase/liquibase.properties
+      - --url=jdbc:postgresql://database:5432/${POSTGRES_DB:-gps_guardian_escolar}
+      - update
+    restart: "no"
+    networks:
+      - guardian_network
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: gps_guardian_escolar_backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      DB_URL: jdbc:postgresql://database:5432/${POSTGRES_DB:-gps_guardian_escolar}
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-30}
+      REQUIRE_HTTPS: ${REQUIRE_HTTPS:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
+      APP_MAIL_ENABLED: ${APP_MAIL_ENABLED:-false}
+      APP_MAIL_FROM: ${APP_MAIL_FROM:-no-reply@guardianescolar.local}
+      MAIL_HOST: ${MAIL_HOST:-localhost}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-false}
+      MAIL_SMTP_STARTTLS: ${MAIL_SMTP_STARTTLS:-false}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8081}
+      API_PUBLIC_BASE_URL: ${API_PUBLIC_BASE_URL:-http://localhost:8080}
+      GPS_DESVIO_UMBRAL_METROS: ${GPS_DESVIO_UMBRAL_METROS:-150}
+      EXPO_PUSH_ENABLED: ${EXPO_PUSH_ENABLED:-false}
+      EXPO_PUSH_URL: ${EXPO_PUSH_URL:-https://exp.host/--/api/v2/push/send}
+      SMS_ENABLED: ${SMS_ENABLED:-false}
+      SMS_PROVIDER: ${SMS_PROVIDER:-GENERIC}
+      SMS_PROVIDER_URL: ${SMS_PROVIDER_URL:-}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      SMS_FROM: ${SMS_FROM:-GuardianEscolar}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - guardian_network
+
+  frontend:
+    build:
+      context: ../Fronted-GuardianEscolar-
+      dockerfile: Dockerfile
+      args:
+        EXPO_PUBLIC_API_URL: ${EXPO_PUBLIC_API_URL:-/api}
+        EXPO_PUBLIC_WS_URL: ${EXPO_PUBLIC_WS_URL:-/ws}
+        EXPO_PUBLIC_STUDENT_LINK_BASE_URL: ${EXPO_PUBLIC_STUDENT_LINK_BASE_URL:-/}
+        EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    container_name: gps_guardian_escolar_frontend
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - guardian_network
+
+volumes:
+  postgres_data:
+    name: gps_guardian_escolar_postgres_data
+
+networks:
+  guardian_network:
+    name: gps_guardian_escolar_network
+    driver: bridge
