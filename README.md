@@ -5,7 +5,7 @@ Esta carpeta centraliza la ejecucion por contenedores de GPS Guardian Escolar.
 ## Servicios
 
 - `database`: PostgreSQL 15 con la estructura cargada desde `../DB-Structure-Guardian-Escolar`.
-- `backend`: API Spring Boot construida desde `../backend`.
+- `backend`: API Spring Boot construida desde `../Backend-Guardian-Escolar`.
 - `frontend`: aplicacion Expo Web construida desde `../Fronted-GuardianEscolar-` y servida con Nginx.
 
 ## Ejecutar desde la raiz del proyecto
